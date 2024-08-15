@@ -126,7 +126,7 @@ int main(int argc, char* argv[])
     std::vector<float> wav_data;
 
     const int width  = 512;
-    const int height = 640;
+    const int height = 100 * 640;
     const int acc_px = 7;
 
     std::vector<float> framebuffer(height * width);
@@ -143,13 +143,13 @@ int main(int argc, char* argv[])
     float prev_sample = 0;
 
     for (size_t i = 0; i < wav_data.size() / 2; i++) {
-        const float sound_sample = wav_data[2 * i];
+        const float sound_sample = wav_data[2 * i + 1];
 
         if (write_ready) {
-            if (sound_sample >= 0.15f) {
+            if (sound_sample >= 0.18f) {
                 write_ready = false;
             } else if (curr_x < width && curr_y < height) {
-                framebuffer[(height - 1 - curr_y) * width + curr_x] += sound_sample;
+                framebuffer[curr_y * width + curr_x] += sound_sample;
                 ++curr_acc;
 
                 if (curr_acc == acc_px) {

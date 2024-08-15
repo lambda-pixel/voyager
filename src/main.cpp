@@ -143,11 +143,10 @@ int main(int argc, char* argv[])
     const char* input_file  = argv[1];
     const char* output_file = argv[2];
     
-
     std::vector<float> wav_data;
 
     const int width  = 512;
-    const int height = 100 * 640;
+    const int height = 100*640;
     const int acc_px = 7;
 
     std::vector<float> framebuffer(height * width);
@@ -172,19 +171,23 @@ int main(int argc, char* argv[])
             if (curr_sample >= 0.18f) {
                 write_ready = false;
             } else if (curr_scanline_sample < n_scanline_samples && curr_y < height) {
-                const float x = (float)curr_scanline_sample / (float)n_scanline_samples * (float)(width - 1);
+                float x = (float)curr_scanline_sample / (float)n_scanline_samples * (float)(width - 1);
                 
                 // Filter the result
+                // TODO: Now the signal is filtered directly but a second pass
+                // would be desirable: we could recalibration local minima & maxima
+                // to mitigate artefacts between fields.
                 acc_filtered_x(framebuffer, x, curr_y, width, height, curr_sample);
 
                 ++curr_scanline_sample;
             }
         } else {
-            // Skip samples until the signal goes under a threshold
-            if (curr_sample < 0.f && prev_sample < curr_sample) {
+            // Skip samples until the signal goes under a threshold & rises again
+            if (curr_sample < 0.05f && prev_sample < curr_sample) {
                 ++curr_y;
                 curr_acc             = 0;
                 curr_scanline_sample = 0;
+
                 write_ready = true;
             }
         }
@@ -204,12 +207,12 @@ int main(int argc, char* argv[])
         max_val = std::max(max_val, pixel);
     }
 
-    // TODO: check min_val == max_val
-
-    for (size_t i = 0; i < framebuffer.size(); i++) {
-        // framebuffer[i] /= (float)acc_px;
-        framebuffer[i] = (framebuffer[i] - min_val) / (max_val - min_val);
-        framebuffer[i] = 1.f - std::max(0.f, std::min(1.f, framebuffer[i]));
+    if (min_val != max_val) {
+        for (size_t i = 0; i < framebuffer.size(); i++) {
+            // framebuffer[i] /= (float)acc_px;
+            framebuffer[i] = (framebuffer[i] - min_val) / (max_val - min_val);
+            framebuffer[i] = 1.f - std::max(0.f, std::min(1.f, framebuffer[i]));
+        }
     }
 
     write_bw_pfm(output_file, framebuffer, width, height);

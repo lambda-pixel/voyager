@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -110,6 +111,26 @@ void write_bw_pfm(const char* filepath, const std::vector<float> framebuffer, in
 }
 
 
+void acc_filtered_x(std::vector<float>& buffer, float x, int y, int width, int height, float value)
+{
+    const int central_val = std::round(x);
+
+    const float alpha = 2.f;
+    const int r = 2.f;
+
+    for (int i = -r; i <= r; i++) {
+        const int curr_x = central_val + i;
+
+        if (curr_x >= 0 && curr_x < width) {
+            const float dist = x - (float)curr_x;
+            const float weight = std::exp(-alpha * dist * dist) * std::exp(-alpha * (float)(r * r));
+
+            buffer[y * width + curr_x] += weight * value;
+        }
+    }
+}
+
+
 int main(int argc, char* argv[])
 {
     if (argc <= 2) {
@@ -134,40 +155,41 @@ int main(int argc, char* argv[])
     read_wave(input_file, wav_data);
 
     // Decode the signal
-    int curr_x   = 0;
-    int curr_y   = 0;
-    int curr_acc = 0;
+    int curr_y               = 0;
+    int curr_acc             = 0;
+    int curr_scanline_sample = 0;
 
     bool write_ready = false;
 
     float prev_sample = 0;
+    
+    const int n_scanline_samples = 4000;
 
     for (size_t i = 0; i < wav_data.size() / 2; i++) {
-        const float sound_sample = wav_data[2 * i + 1];
+        const float curr_sample = wav_data[2 * i];
 
         if (write_ready) {
-            if (sound_sample >= 0.18f) {
+            if (curr_sample >= 0.18f) {
                 write_ready = false;
-            } else if (curr_x < width && curr_y < height) {
-                framebuffer[curr_y * width + curr_x] += sound_sample;
-                ++curr_acc;
+            } else if (curr_scanline_sample < n_scanline_samples && curr_y < height) {
+                const float x = (float)curr_scanline_sample / (float)n_scanline_samples * (float)(width - 1);
+                
+                // Filter the result
+                acc_filtered_x(framebuffer, x, curr_y, width, height, curr_sample);
 
-                if (curr_acc == acc_px) {
-                    ++curr_x;
-                    curr_acc = 0;
-                }
+                ++curr_scanline_sample;
             }
         } else {
             // Skip samples until the signal goes under a threshold
-            if (sound_sample <= 0 && prev_sample < sound_sample) {
+            if (curr_sample < 0.f && prev_sample < curr_sample) {
                 ++curr_y;
-                curr_x      = 0;
-                curr_acc    = 0;
+                curr_acc             = 0;
+                curr_scanline_sample = 0;
                 write_ready = true;
             }
         }
 
-        prev_sample = sound_sample;
+        prev_sample = curr_sample;
     }
 
     std::cout << "read " << curr_y << " scanlines" << std::endl;
@@ -181,6 +203,8 @@ int main(int argc, char* argv[])
         min_val = std::min(min_val, pixel);
         max_val = std::max(max_val, pixel);
     }
+
+    // TODO: check min_val == max_val
 
     for (size_t i = 0; i < framebuffer.size(); i++) {
         // framebuffer[i] /= (float)acc_px;
